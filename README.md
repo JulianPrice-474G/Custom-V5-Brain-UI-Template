@@ -242,6 +242,40 @@ Driver mode locks the brain screen and frees LEFT / RIGHT / A / B for robot subs
 > **Always enter driver mode before the match starts.**
 
 
+## Starting from Scratch
+
+If you delete everything in `user_screen.cpp` and write your own UI from scratch, the following functions **must always exist** or the project will not build. `main.cpp` and `main.h` call them by name — removing them causes linker errors.
+
+```cpp
+// Required — called by main.cpp's autonomous()
+int get_selected_auton() { return SelectedAuton(); }
+
+// Required — called by main.cpp's opcontrol() every tick
+// Can be an empty stub if you don't need controller navigation
+void handle_ctrl_input() {}
+
+// Required — called by main.cpp's initialize()
+void build_screens() {
+  // your PageAdd / ButtonAdd / etc. calls go here
+  PageShow("your_first_page");
+}
+
+// Required — declared extern in main.h
+const char* battery_text() {
+  static char buf[20];
+  snprintf(buf, sizeof(buf), "Bat: %d%%", (int)pros::battery::get_capacity());
+  return buf;
+}
+const char* ctrl_battery_text() {
+  static char buf[20];
+  snprintf(buf, sizeof(buf), "Ctrl: %d%%", master.get_battery_level());
+  return buf;
+}
+```
+
+Everything else in `user_screen.cpp` (demo code, competition template, helper callbacks) can be freely deleted or replaced.
+
+
 ## Available Functions
 
 The full function reference is at the top of `src/user_screen.cpp`. Quick summary:
