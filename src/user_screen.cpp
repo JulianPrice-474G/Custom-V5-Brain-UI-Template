@@ -719,6 +719,17 @@ static void _ctrl_auton(int idx) {
   CtrlLabel(2, "(< >) Nxt Auton");
 }
 
+// Controller confirmation after A selects an auton.  Without this the display is
+// identical before and after the press, so there is no way to tell it registered.
+static void _ctrl_selected(int idx) {
+  static const char* names[] = { "Auton 1", "Auton 2", "Skills" };
+  CtrlLabel(0, names[idx]);
+  CtrlLabel(1, "** SELECTED **");
+  CtrlLabel(2, "(< >) Nxt Auton");
+  CtrlRumble(".");            // short buzz so you feel it too
+}
+
+
 // handle_ctrl_input() is called once per opcontrol loop tick from main.cpp.
 // It reads buttons and advances the state machine, updating the controller
 // display whenever the state changes. Nothing here blocks — it just reads
@@ -784,24 +795,39 @@ void handle_ctrl_input() {
       case CTRL_A0:
         if (left_new)  { ctrl_state = CTRL_A2; _ctrl_auton(2); }  // wrap to last
         if (right_new) { ctrl_state = CTRL_A1; _ctrl_auton(1); }
-        if (a_new)     { ForceSelectAuton(0); PageShow("auton_1"); }
+        if (a_new)     { ForceSelectAuton(0); PageShow("auton_1"); _ctrl_selected(0); }
         if (b_new)     { ctrl_state = CTRL_HOME; _ctrl_home(); }
         break;
       case CTRL_A1:
         if (left_new)  { ctrl_state = CTRL_A0; _ctrl_auton(0); }
         if (right_new) { ctrl_state = CTRL_A2; _ctrl_auton(2); }
-        if (a_new)     { ForceSelectAuton(1); PageShow("auton_2"); }
+        if (a_new)     { ForceSelectAuton(1); PageShow("auton_2"); _ctrl_selected(1); }
         if (b_new)     { ctrl_state = CTRL_HOME; _ctrl_home(); }
         break;
       case CTRL_A2:
         if (left_new)  { ctrl_state = CTRL_A1; _ctrl_auton(1); }
         if (right_new) { ctrl_state = CTRL_A0; _ctrl_auton(0); }  // wrap to first
-        if (a_new)     { ForceSelectAuton(2); PageShow("auton_3"); }
+        if (a_new)     { ForceSelectAuton(2); PageShow("auton_3"); _ctrl_selected(2); }
         if (b_new)     { ctrl_state = CTRL_HOME; _ctrl_home(); }
         break;
     }
   }
 }
+
+// Live readout of which auton is currently selected, so a tap on the brain (or
+// an A press on the controller) has visible confirmation.  Names must match the
+// ButtonAdd labels on "auton_tab" below.
+const char* selected_auton_text() {
+  static char buf[32];
+  static const char* names[] = { "Auton 1", "Auton 2", "Skills" };
+  int idx = SelectedAuton();
+  if (idx < 0 || idx >= (int)(sizeof(names) / sizeof(names[0])))
+    snprintf(buf, sizeof(buf), "Selected: none");
+  else
+    snprintf(buf, sizeof(buf), "Selected: %s", names[idx]);
+  return buf;
+}
+
 
 void build_screens() {
   BgColor(UI_DARK_BG);
@@ -829,6 +855,9 @@ void build_screens() {
   ButtonAdd("auton_tab",  50, 117, 380, 41, UI_GREEN, "Auton 2", "auton_2", UI_ELEM_GROW, 1);
   ButtonAdd("auton_tab",  50, 168, 380, 41, UI_BLUE,  "Skills",  "auton_3", UI_ELEM_GROW, 2);
   ButtonPressStyle(UI_PRESS_NONE);
+
+  // Selection confirmation, under the three buttons
+  LiveLabelAdd("auton_tab", 50, 214, selected_auton_text, 200, 18, UI_GREEN);
 
   // ── Robot Status tab ───────────────────────────────────────────────────────
   BoxAdd(   "status_tab",   0,  0, 480, 34, UI_DARK_BG, 0);

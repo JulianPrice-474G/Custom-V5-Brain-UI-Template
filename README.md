@@ -33,12 +33,29 @@ ButtonAdd(/*page*/ "auton_tab", /*x*/ 50, /*y*/ 66, /*w*/ 380, /*h*/ 41,
 
 VS Code may prompt you to disable the conflicting extension — accept it. If it does not prompt, **do it manually.** Two language servers analysing one project will disagree, and you get duplicated, contradictory squiggles that look like real errors.
 
-In `.vscode/settings.json`:
+**How to get to that file:** press `Cmd+Shift+P` (`Ctrl+Shift+P` on Windows), type
+**Preferences: Open Workspace Settings (JSON)**, and press Enter. That opens
+`.vscode/settings.json` in your project, creating it if it does not exist.
+`.vscode` is a hidden folder in your project root, which is why you will not see
+it in Finder by default.
+
+Add the line inside the outer braces:
+
 ```json
-"C_Cpp.intelliSenseEngine": "disabled"
+{
+  "C_Cpp.intelliSenseEngine": "disabled"
+}
 ```
 
-If you would rather skip clangd and keep the Microsoft engine, point it at the real build database instead — otherwise it guesses your include paths and invents errors. In `.vscode/c_cpp_properties.json`:
+If the file already has settings in it, put a comma after the previous line —
+it is JSON, and a missing comma silently breaks every setting in the file.
+
+If you would rather skip clangd and keep the Microsoft engine, point it at the
+real build database instead — otherwise it guesses your include paths and invents
+errors. Same idea, different file: `Cmd+Shift+P` → **C/C++: Edit Configurations
+(JSON)** opens `.vscode/c_cpp_properties.json`. Add this inside the
+`configurations` entry:
+
 ```json
 "compileCommands": "${workspaceFolder}/compile_commands.json"
 ```
@@ -90,7 +107,39 @@ Steps 2 and 3 below tell you exactly what to change in each one.
 `ui_engine.cpp` and `ui_engine.hpp` are the engine — **never edit them**.  
 `user_screen.cpp` is the only file you need to edit. It contains both the brain screen layout and the controller display logic.
 
-> `.clangd` is a hidden file. In macOS Finder press `Cmd + Shift + .` to see it, or copy it from a terminal.
+> ### Do not confuse `.clangd` with `.clang-format`
+>
+> EZ-Template projects already ship a `.clang-format` file. It is a different
+> tool with a very similar name, and when you switch on hidden files you will see
+> both:
+>
+> | File | What it is | Comes from |
+> |------|-----------|------------|
+> | `.clang-format` | code formatting rules (indentation, braces) | EZ-Template, already in your project |
+> | `.clangd` | language server config, silences false include warnings | **this template, you add it** |
+>
+> Seeing `.clang-format` does not mean you already have `.clangd`.
+>
+> ### `.clangd` is a hidden file — you will not see it by default
+>
+> Files starting with a dot are hidden by macOS Finder and by most file pickers.
+> It **is** in the repo and **is** in the ZIP download — it just does not show up.
+>
+> **In Finder:** press `Cmd + Shift + .` to toggle hidden files. Press it again to
+> hide them.
+>
+> **Or from a terminal**, which ignores the hidden flag entirely:
+> ```bash
+> cp ~/Downloads/Custom-V5-Brain-UI-Template-main/.clangd /path/to/your/project/
+> ```
+>
+> **Or skip the file** and make your own: in VS Code, `Cmd+N`, paste the three
+> lines below, then `Cmd+S` and name it `.clangd` in your project root.
+> ```
+> Diagnostics:
+>   UnusedIncludes: None
+>   MissingIncludes: None
+> ```
 
 ### Step 2 — Edit `include/main.h`
 
@@ -118,6 +167,11 @@ extern const char* ctrl_battery_text();
 
 #### 3a — Add the include and forward declarations near the top
 
+Your `main.cpp` already starts with `#include "main.h"`. **Do not paste the block
+below underneath it** — that gives you the include twice. Add the `ui_engine.hpp`
+line and the three declarations *after* the `#include "main.h"` you already have,
+so the top of the file ends up looking exactly like this:
+
 ```cpp
 #include "main.h"
 #include "ui_engine.hpp"
@@ -130,17 +184,29 @@ void handle_ctrl_input();
 
 #### 3b — Replace your `initialize()` function
 
-Add the spinner and engine init block. Your existing chassis setup
-(IMU calibration, curve defaults, etc.) goes in the marked section.
+**Delete your entire `initialize()` body and paste the version below.** Then move
+your own chassis settings into the `── Your chassis setup ──` slot inside it.
 
-> **This replacement deletes four things** from EZ-Template's stock `initialize()`:
->
-> | Deleted | What to do |
-> |---|---|
-> | `default_constants()` | Kept below — **leave it uncommented** |
-> | `chassis.initialize()` | Kept below — **leave it uncommented**, or your IMU never calibrates and your drive will not work |
-> | `ez::as::auton_selector.autons_add({...})` | Gone on purpose — the brain UI replaces the LLEMU selector |
-> | `ez::as::initialize()` | Gone on purpose — see Step 3d for the consequence |
+Working out what goes where, line by line:
+
+| In your current `initialize()` | Do this |
+|---|---|
+| `ez::ez_template_print()` | delete — terminal branding only, keep it if you like it |
+| `pros::delay(500)` | delete |
+| commented-out tracker lines | keep, they are inert |
+| `chassis.opcontrol_curve_buttons_toggle(...)` | **move into the slot** — but the version below already sets it to `false`, so drop yours |
+| `chassis.opcontrol_drive_activebrake_set(...)` | **move into the slot** |
+| `chassis.opcontrol_curve_default_set(...)` | **move into the slot** |
+| any other `chassis.opcontrol_*` settings | **move into the slot** |
+| `default_constants()` | already in the version below — do not duplicate |
+| `ez::as::auton_selector.autons_add({ ... })` | **delete the whole block** — the brain UI replaces the LLEMU selector |
+| `chassis.initialize()` | already in the version below |
+| `ez::as::initialize()` | **delete** — see Step 3d for the consequence |
+| `master.rumble(...)` | already in the version below |
+
+The short version: your `chassis.opcontrol_*` settings move into the slot,
+`autons_add` and `ez::as::initialize()` go away, and everything else you need is
+already in the replacement.
 
 ```cpp
 void initialize() {
@@ -193,6 +259,8 @@ void opcontrol() {
 
   while (true) {
     handle_ctrl_input();
+    ez_template_extras();   // keep this if you want EZ-Template's DOWN+B auton
+                            // test and X PID tuner - delete it if you do not
 
     chassis.opcontrol_arcade_standard(ez::SPLIT);
 
@@ -209,12 +277,79 @@ void opcontrol() {
 
 Two consequences worth knowing:
 
-- **`ez_template_extras()` is no longer called.** EZ-Template's PID tuner and the DOWN+B auton test become unreachable. You can add the call back — the driver-mode combo is hold-based, so a single X press for the PID tuner will not trigger it.
+- **`ez_template_extras()` is kept above**, so EZ-Template's DOWN+B auton test and X PID tuner keep working. This is safe: the driver-mode combo needs UP **and** X held together for a full second, so a single X press for the PID tuner will not trigger it. Delete the line if you do not want those features — but be deliberate about it, they are easy to lose by accident.
+- **Check EZ-Template's DOWN+B auton trigger against your button map.** `ez_template_extras()` fires autonomous whenever DOWN and B are held together, and the competition menu uses B as its back button. If either is bound to a subsystem, all three happen at once.
+
+  The combo lives in `ez_template_extras()` in your own `main.cpp`, so rebind it freely — change `DIGITAL_DOWN` to any button your robot does not use:
+
+  ```cpp
+  // in ez_template_extras()
+  static const int AUTON_COMBO_HOLD_MS = 1000;
+  static int  auton_combo_ms    = 0;
+  static bool auton_combo_fired = false;
+
+  bool auton_combo = master.get_digital(DIGITAL_B) && master.get_digital(DIGITAL_LEFT);
+  bool auton_combo_pressed = false;
+
+  if (auton_combo) {
+    auton_combo_ms += ez::util::DELAY_TIME;   // one tick per opcontrol loop
+    if (auton_combo_ms >= AUTON_COMBO_HOLD_MS && !auton_combo_fired) {
+      auton_combo_fired   = true;             // fires once, not every tick
+      auton_combo_pressed = true;
+    }
+  } else {
+    auton_combo_ms    = 0;
+    auton_combo_fired = false;
+  }
+
+  if (!DriverModeActive() && auton_combo_pressed) {
+    master.rumble("-");   // long buzz so you know the combo fired
+    pros::motor_brake_mode_e_t preference = chassis.drive_brake_get();
+    autonomous();
+    chassis.drive_brake_set(preference);
+  }
+  ```
+
+  Three things worth copying from that snippet:
+
+  **`!DriverModeActive()`** — gate the trigger on it. In driver mode the menu
+  buttons are released back to your subsystems, so a driver using LEFT could
+  otherwise fire autonomous by accident mid-drive. Outside driver mode those
+  buttons belong to the UI, and the menu navigating while autonomous starts does
+  not matter — nobody is looking at the screen at that point.
+
+  **`master.rumble("-")`** — without it there is no feedback that autonomous
+  started, which makes an accidental trigger very hard to diagnose.
+
+  **Do not use `get_digital()` on both buttons**, and **do not reach for
+  `get_digital_new_press()` either.** Both fail here, for different reasons:
+
+  | Approach | What goes wrong |
+  |---|---|
+  | `get_digital()` on both | `autonomous()` **blocks** the opcontrol loop, so the instant it returns the combo is still held and it fires again. `handle_ctrl_input()` never gets another tick — the UI runs once, then appears frozen forever. |
+  | `get_digital_new_press()` | **The press is consumed by whoever reads it first.** `handle_ctrl_input()` reads LEFT / RIGHT / A / B that way for the menu and runs earlier in the loop, so it eats the press and your trigger never fires at all. |
+
+  Time the hold yourself, as above. `get_digital()` is not consumed, so reading it
+  from two places is safe — you accumulate `ez::util::DELAY_TIME` while both are
+  down and fire once at the threshold.
+
+  Requiring a **one second hold** rather than a tap also matches how driver mode
+  arms, and means brushing the buttons mid-drive cannot start a routine.
+
+  Even once it fires correctly, the UI pauses for as long as your auton runs. That
+  is inherent to calling `autonomous()` from opcontrol and is not something the UI
+  introduces — the rumble is what tells you it started.
 - **Never call `master.set_text()` or `master.print()` yourself.** The engine owns the controller display and repaints all three rows on every `CtrlLabel()` and every 3 seconds. Direct writes get overwritten within a frame. Use `CtrlLabel()` / `CtrlLabelFmt()` instead.
 
 #### 3d — Replace your `autonomous()` function
 
 Step 3b removed `ez::as::initialize()`, so EZ-Template's selector is now empty and uninitialized. If you leave `ez::as::auton_selector.selected_auton_call()` in place, **your autonomous silently does nothing** — it compiles, it runs, no route ever fires, and you get no error.
+
+> **The `case` bodies below are EZ-Template's example routines**, not placeholders.
+> They exist in every EZ-Template project, so this block compiles the moment you
+> paste it. Replace them with your own auton functions when you have some — but
+> replace them with names that *exist*, or you get
+> `'your_left_auton' was not declared in this scope`.
 
 ```cpp
 void autonomous() {
@@ -226,11 +361,14 @@ void autonomous() {
 
   // The number in each case must match the auton_idx you gave that
   // ButtonAdd in build_screens().
+  //
+  // These are EZ-Template's built-in examples so this compiles as-is.
+  // Swap them for your own routines from autons.cpp.
   switch (get_selected_auton()) {
-    case 0: your_left_auton();   break;
-    case 1: your_right_auton();  break;
-    case 2: your_skills_route(); break;
-    default:                     break;
+    case 0: drive_example();  break;
+    case 1: turn_example();   break;
+    case 2: drive_and_turn(); break;
+    default:                  break;   // nothing selected yet
   }
 }
 ```
@@ -264,6 +402,8 @@ Leaving these in means an LLEMU task and the LVGL engine both driving one screen
 | Drive dead, IMU never calibrates, controller rumbles `---` | `chassis.initialize()` left commented out | Uncomment it — Step 3b |
 | Autonomous does nothing, no error shown | `autonomous()` still calls `selected_auton_call()` | Complete Step 3d |
 | Controller screen flickers between two things | Your code calls `master.set_text()` directly | Use `CtrlLabel()` — Step 3c |
+| UI frozen while autonomous runs | Expected — `autonomous()` blocks the opcontrol loop, so `handle_ctrl_input()` cannot tick | Not a bug. The screen comes back when the routine finishes |
+| UI frozen and never recovers after the auton test combo | Both trigger buttons read with `get_digital()`, so autonomous re-fires the moment it returns | Use `get_digital_new_press()` on one of them — Step 3c |
 | Driver mode toggles by accident mid-match | Hold time too short for your button pair | Raise `DRIVER_MODE_HOLD_MS`, or pick a different pair — see Driver Mode |
 | A motor never spins | Two `pros::Motor` objects share one port; the later `.move()` each tick wins | Audit your port constants for duplicates |
 
@@ -316,6 +456,17 @@ Now the strings below are live:
 **Brain screen** — in `build_screens()`:
 - Change `"Team XXXX"` on the Robot Status tab to your team number
 - Change `"Auton 1"`, `"Auton 2"`, `"Skills"` button labels to your actual route names (in the `ButtonAdd` calls and the auton detail page `LabelAdd` calls)
+
+**Selection feedback** — the competition template confirms a choice in three
+places, so you can tell it registered:
+
+- the brain jumps to that auton's detail page
+- a live `Selected: <name>` label appears under the buttons on the Auton Selector
+  tab, driven by `selected_auton_text()`
+- pressing **A** on the controller sets row 1 to `** SELECTED **` and buzzes
+
+If you rename your routes, update the `names[]` arrays in **both**
+`selected_auton_text()` and `_ctrl_selected()` — they are separate lists.
 
 **Controller display** — in `user_screen.cpp`, edit the three display helpers:
 - `_ctrl_home()` row 0: change `"Custom Brain UI"` to your team/robot name
@@ -414,6 +565,15 @@ so leaving it out means whatever was running keeps running.
 Leave `chassis.opcontrol_arcade_standard()` **outside** the gate. You still want to
 drive the robot around while setting up.
 
+> **The UI freezes while autonomous runs.** `autonomous()` is called straight from
+> the opcontrol loop and blocks until the routine finishes, so `handle_ctrl_input()`
+> gets no ticks and the controller menu stops responding for the duration. The brain
+> screen holds its last frame. Both come back on their own when the routine ends.
+>
+> This is EZ-Template's structure, not something the UI adds — but it is far more
+> noticeable with a UI attached, because now there is something visibly stalled.
+> Nothing to fix; just know it is normal.
+
 **Competition workflow:**
 1. Tap your auton on the brain screen (or navigate with the controller)
 2. Hold **UP + X** for 1 second → brain screen locks, controller rumbles
@@ -450,7 +610,12 @@ const char* battery_text() {
 }
 const char* ctrl_battery_text() {
   static char buf[20];
-  snprintf(buf, sizeof(buf), "Ctrl: %d%%", master.get_battery_level());
+  // get_battery_capacity() is the PERCENTAGE - the controller-side analog of
+  // pros::battery::get_capacity().  get_battery_level() is a DIFFERENT field and
+  // does not report a percentage.
+  int pct = master.get_battery_capacity();
+  if (pct < 0) pct = 0;   // PROS_ERR when the controller is not connected
+  snprintf(buf, sizeof(buf), "Ctrl: %d%%", pct);
   return buf;
 }
 ```
