@@ -526,7 +526,7 @@ void PortStatusUpdate(lv_obj_t* port_buttons[20]) {
   for (int port = 1; port <= 20; port++) {
     lv_obj_t* btn = port_buttons[port - 1];
     if (btn == nullptr) continue;
-    bool connected = !pros::Device(port).is_installed();
+    bool connected = pros::Device(port).is_installed();
     lv_obj_set_style_bg_color(btn,
       lv_color_hex(connected ? UI_GREEN : UI_RED), 0);
     lv_obj_set_style_border_color(btn,
@@ -537,7 +537,9 @@ void PortStatusUpdate(lv_obj_t* port_buttons[20]) {
 
 // ── Convenience helpers ───────────────────────────────────────────────────────
 bool PortConnected(int port) {
-  return !pros::Device(port).is_installed();
+  // pros::Device::is_installed() returns TRUE when a device IS plugged in,
+  // so this must not be negated.
+  return pros::Device(port).is_installed();
 }
 
 int MotorTempF(int port) {
@@ -645,6 +647,10 @@ static lv_obj_t* _easter_scr       = nullptr;
 static lv_obj_t* _pre_easter_scr   = nullptr;
 static bool      _easter_triggered = false;
 
+// Set by EngineDriverMode().  Read by the easter egg check below and exposed
+// to user code through DriverModeActive().
+static bool      _driver_mode_active = false;
+
 static void _ctrl_task(void*) {
   while (true) {
     if (_building) { pros::delay(50); continue; }
@@ -654,10 +660,14 @@ static void _ctrl_task(void*) {
       _ctrl_send_all();
     }
 
-    // Easter egg: hold all 4 top triggers for ~600ms
+    // Easter egg: hold all 4 top triggers for ~600ms.
+    // Skipped entirely in driver mode.  The easter screen is dismissed by a
+    // TAP, and driver mode disables touch - so firing it during a match would
+    // leave the brain stuck on it with no way out.
     {
       static int hold = 0;
-      bool combo = _ctrl.get_digital(DIGITAL_L1) && _ctrl.get_digital(DIGITAL_L2) &&
+      bool combo = !_driver_mode_active &&
+                   _ctrl.get_digital(DIGITAL_L1) && _ctrl.get_digital(DIGITAL_L2) &&
                    _ctrl.get_digital(DIGITAL_R1) && _ctrl.get_digital(DIGITAL_R2);
       if (combo) {
         if (++hold == 30 && !_easter_triggered) {
@@ -2047,7 +2057,12 @@ void CtrlFlush() {
 static lv_obj_t* _driver_screen  = nullptr;
 static lv_obj_t* _prev_screen    = nullptr;
 
+bool DriverModeActive() {
+  return _driver_mode_active;
+}
+
 void EngineDriverMode(bool active) {
+  _driver_mode_active = active;
   if (active) {
     _prev_screen = lv_scr_act();
 
