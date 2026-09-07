@@ -277,7 +277,27 @@ void opcontrol() {
 
 Two consequences worth knowing:
 
-- **`ez_template_extras()` is kept above**, so EZ-Template's DOWN+B auton test and X PID tuner keep working. This is safe: the driver-mode combo needs UP **and** X held together for a full second, so a single X press for the PID tuner will not trigger it. Delete the line if you do not want those features — but be deliberate about it, they are easy to lose by accident.
+- **`ez_template_extras()` is kept above**, so EZ-Template's auton test and PID tuner keep working. Delete the line if you do not want them — but be deliberate, they are easy to lose by accident.
+
+- **You MUST change the PID tuner's button, or driver mode will data abort.** `ez_template_extras()` binds **X**:
+
+  ```cpp
+  if (master.get_digital_new_press(DIGITAL_X))
+    chassis.pid_tuner_toggle();
+  ```
+
+  The driver-mode combo is **UP + X**. So arming driver mode also toggles the PID tuner, every time. That is fatal, not merely untidy: `pid_tuner_toggle()` calls `pros::lcd::shutdown()` and builds its own LLEMU display over the engine's screens, while the engine's background tasks are still writing labels onto them. The result is a **deterministic data abort the first time you arm driver mode**.
+
+  Require X on its own:
+
+  ```cpp
+  if (master.get_digital_new_press(DIGITAL_X) && !master.get_digital(DIGITAL_UP))
+    chassis.pid_tuner_toggle();
+  ```
+
+  Or change `DRIVER_MODE_BTN_B` in `user_screen.cpp` to a button `ez_template_extras()` does not use. Either works; do one of them.
+
+  The general rule: **nothing else may drive the brain display while the UI engine owns it.** EZ-Template's PID tuner and its `ez_screen_task` (Step 3e) both do, which is why both need handling.
 - **Check EZ-Template's DOWN+B auton trigger against your button map.** `ez_template_extras()` fires autonomous whenever DOWN and B are held together, and the competition menu uses B as its back button. If either is bound to a subsystem, all three happen at once.
 
   The combo lives in `ez_template_extras()` in your own `main.cpp`, so rebind it freely — change `DIGITAL_DOWN` to any button your robot does not use:
@@ -402,6 +422,7 @@ Leaving these in means an LLEMU task and the LVGL engine both driving one screen
 | Drive dead, IMU never calibrates, controller rumbles `---` | `chassis.initialize()` left commented out | Uncomment it — Step 3b |
 | Autonomous does nothing, no error shown | `autonomous()` still calls `selected_auton_call()` | Complete Step 3d |
 | Controller screen flickers between two things | Your code calls `master.set_text()` directly | Use `CtrlLabel()` — Step 3c |
+| Data abort the moment you arm driver mode | UP+X also toggles EZ-Template's PID tuner, which calls `pros::lcd::shutdown()` under the running UI | Gate the tuner on `!master.get_digital(DIGITAL_UP)`, or move the driver-mode combo off X — Step 3c |
 | UI frozen while autonomous runs | Expected — `autonomous()` blocks the opcontrol loop, so `handle_ctrl_input()` cannot tick | Not a bug. The screen comes back when the routine finishes |
 | UI frozen and never recovers after the auton test combo | Both trigger buttons read with `get_digital()`, so autonomous re-fires the moment it returns | Use `get_digital_new_press()` on one of them — Step 3c |
 | Driver mode toggles by accident mid-match | Hold time too short for your button pair | Raise `DRIVER_MODE_HOLD_MS`, or pick a different pair — see Driver Mode |
